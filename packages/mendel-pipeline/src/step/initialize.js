@@ -2,8 +2,7 @@ const BaseStep = require('./step');
 
 class Initialize extends BaseStep {
     /**
-     * @param {Array<String>} config.commonTransformIds
-     * @param {Transformer} toolset.transformer
+     * @param {MendelCache} toolset.cache
      */
     constructor({cache}) {
         super();
@@ -16,7 +15,7 @@ class Initialize extends BaseStep {
     }
 
     pushEntry(entryId) {
-        this.emit('done', {entryId: entryId});
+        this.emit('done', {entryId});
     }
 }
 

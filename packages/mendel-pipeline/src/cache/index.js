@@ -49,7 +49,7 @@ class MendelCache extends EventEmitter {
             this._normalizedIdToEntryIds.get(entry.normalizedId).push(entry.id);
 
             this._store.set(id, entry);
-            this.emit('entryAdded', id);
+            setImmediate(() => this.emit('entryAdded', id));
         }
     }
 

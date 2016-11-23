@@ -56,6 +56,15 @@ class MendelRegistry extends EventEmitter {
         return type.transforms.concat([type.parser]);
     }
 
+    // planSearchIds is in order of priority
+    getClosestPlanTransformIds(entryId, planSearchIds) {
+        const plan = this.getTransformPlans(entryId);
+        const foundPlan = planSearchIds.find(id => plan[id]);
+
+        if (!foundPlan) return [];
+        return plan[foundPlan].ids;
+    }
+
     getTransformPlans(entryId) {
         // do ist first
         const type = this.getType(entryId);
@@ -65,6 +74,7 @@ class MendelRegistry extends EventEmitter {
         };
         const gst = {};
 
+        // If there is a parser, do type conversion
         while (this._parserTypeConversion.has(ist.type)) {
             const newType = this._parserTypeConversion.get(ist.type);
             ist.type = newType;
@@ -90,10 +100,7 @@ class MendelRegistry extends EventEmitter {
             prevPlan = gst[gstId];
         });
 
-        return {
-            ist,
-            gst,
-        };
+        return Object.assign(gst, {ist});
     }
 
     addToPipeline(filePath) {
@@ -102,7 +109,6 @@ class MendelRegistry extends EventEmitter {
 
     addEntry(filePath) {
         this._mendelCache.addEntry(filePath);
-        this.emit('entryAdded', filePath);
     }
 
     addRawSource(filePath, source) {
@@ -117,10 +123,8 @@ class MendelRegistry extends EventEmitter {
             error(msg);
             this._mendelCache.addEntry(filePath);
         }
-
         const entry = this._mendelCache.getEntry(filePath);
         entry.setSource(transformIds, source, deps);
-
         this.emit('_transformedSource', filePath);
     }
 
@@ -146,25 +150,31 @@ class MendelRegistry extends EventEmitter {
         return this._mendelCache.hasEntry(filePath);
     }
 
-    waitForGraphForGst(entryId, gstId, visitedEntries=new Set()) {
+    /**
+     * If entry has plan for one of plan ids, this method will wait for
+     * transforms pertain to that plan and resolve only when all of its
+     * dependencides, which can be of different types, resolve too.
+     */
+    waitForGraphForPlanIds(entryId, planIds, visitedEntries=new Set()) {
         const entry = this.getEntry(entryId);
-        const {gst, ist} = this.getTransformPlans(entryId);
         visitedEntries.add(entry);
 
         // this GST was not planned for this entry's type
         // which means we can just move forward but with ist's result
-        const expectedTransformIds = gst[gstId] && gst[gstId].ids.length ?
-            gst[gstId].ids : ist.ids;
+        const expectedTransformIds = this.getClosestPlanTransformIds(
+            entry.id,
+            planIds
+        );
         let promise;
-        if (entry.hasSource(expectedTransformIds)) {
+
+        if (entry.hasSource(expectedTransformIds) && entry.hasDependency(expectedTransformIds)) {
             promise = Promise.resolve();
         } else {
             promise = new Promise(resolve => {
                 this.on('_transformedSource', function handleTransform(id) {
                     if (id !== entryId) return;
-                    resolve();
-
                     this.removeListener('_transformedSource', handleTransform);
+                    resolve();
                 });
             });
         }
@@ -180,10 +190,9 @@ class MendelRegistry extends EventEmitter {
                 //     );
                 // }, []);
             const waitForDeps = depIds.map(dep => {
-                return this.waitForGraphForGst(dep, gstId, visitedEntries);
+                return this.waitForGraphForPlanIds(dep, planIds, visitedEntries);
             });
-            return Promise.all(waitForDeps)
-                .then(() => Array.from(visitedEntries.keys()));
+            return Promise.all(waitForDeps).then(() => Array.from(visitedEntries.keys()));
         });
     }
 }

@@ -16,6 +16,7 @@ class FileReader extends BaseStep {
     perform(entry) {
         const filePath = path.resolve(this.projectRoot, entry.id);
 
+        // TODO we need to skip for virtual files
         analytics.tic('read');
         fs.readFile(filePath, 'utf8', (error, source) => {
             analytics.toc('read');
@@ -23,9 +24,9 @@ class FileReader extends BaseStep {
                 debugError(`Errored while reading ${filePath}`);
                 // TODO: uncomment line below, fix resolver
                 // throw error;
+            } else {
+                this.registry.addRawSource(entry.id, source);
             }
-
-            this.registry.addRawSource(entry.id, source);
             this.emit('done', {entryId: entry.id});
         });
     }
